@@ -5,8 +5,9 @@ import urllib.parse
 from bs4 import BeautifulSoup
 import os
 import json
+import streamlit as st
 
-# -------- PDF TEXT --------
+# PDF TEXT
 def extract_text_from_pdf(file):
     pdf = fitz.open(stream=file.read(), filetype="pdf")
     text = ""
@@ -15,40 +16,29 @@ def extract_text_from_pdf(file):
     return text
 
 
-# -------- IMPROVED CLAIM EXTRACTION --------
+# IMPROVED CLAIM EXTRACTION
 def extract_claims(text):
-    # Clean weird line breaks
     text = text.replace("\n", " ")
-
-    # Split into sentences
     sentences = re.split(r'(?<=[.!?]) +', text)
-
     claims = []
-
     for s in sentences:
         s = s.strip()
-
-        # Skip too short
         if len(s) < 20:
             continue
-
-        # Keep sentences with:
-        # numbers OR factual keywords
         if re.search(r'\d', s) or any(word in s.lower() for word in [
             "is", "are", "was", "were", "has", "have", "according", "study"
         ]):
             claims.append(s)
-
     return list(dict.fromkeys(claims))  # remove duplicates
 
 
-# -------- CLEAN QUERY --------
+#  CLEAN QUERY 
 def clean_query(claim):
     claim = re.sub(r'[^a-zA-Z0-9 ]', '', claim)
     return " ".join(claim.split()[:6])
 
 
-# -------- WIKIPEDIA --------
+#  WIKIPEDIA 
 def search_wikipedia(query):
     try:
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{query}"
@@ -60,63 +50,52 @@ def search_wikipedia(query):
     return ""
 
 
-# -------- DUCKDUCKGO --------
+#  DUCKDUCKGO 
 def search_duckduckgo(query):
     query = urllib.parse.quote(query)
     url = f"https://html.duckduckgo.com/html/?q={query}"
-
     headers = {"User-Agent": "Mozilla/5.0"}
-
     try:
         res = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
-
         results = []
         for r in soup.find_all("div", class_="result__body"):
             snippet = r.find("a", class_="result__snippet")
             if snippet:
                 results.append(snippet.get_text())
-
         return " ".join(results[:5])
     except:
         return ""
 
 
-# -------- EVIDENCE --------
+#  EVIDENCE 
 def get_evidence(claim):
     query = clean_query(claim)
-
     wiki = search_wikipedia(query)
     if wiki:
         return wiki
-
     return search_duckduckgo(query)
 
 
-# -------- MISTRAL --------
+#  MISTRAL 
 def call_mistral(prompt):
     url = "https://api.mistral.ai/v1/chat/completions"
-
     headers = {
         "Authorization": f"Bearer {st.secrets['MISTRAL_API_KEY']}",
         "Content-Type": "application/json"
     }
-
     data = {
         "model": "mistral-small-latest",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0
     }
-
     res = requests.post(url, headers=headers, json=data)
-
     if res.status_code != 200:
         return res.text
-
     return res.json()["choices"][0]["message"]["content"]
 
 
-# -------- VERIFY --------
+#  VERIFY 
 def verify_claim(claim):
     evidence = get_evidence(claim)
 
@@ -148,9 +127,7 @@ def verify_claim(claim):
 
     try:
         output = call_mistral(prompt)
-
         match = re.search(r'\{.*\}', output, re.DOTALL)
-
         if match:
             result = json.loads(match.group())
         else:
@@ -159,9 +136,7 @@ def verify_claim(claim):
                 "explanation": output,
                 "confidence": "50%"
             }
-
         result["evidence"] = evidence[:300]
-
         return result
 
     except Exception as e:
