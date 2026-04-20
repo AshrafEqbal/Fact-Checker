@@ -114,7 +114,7 @@ def verify_claim(claim):
     - False
 
     Give:
-    - short explanation (max 2 lines)
+    - Give a clear and complete explanation in 2-3 sentences. Do not cut mid-sentence.
     - confidence (0-100%)
 
     Output JSON:
